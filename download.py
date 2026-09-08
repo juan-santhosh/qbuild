@@ -37,8 +37,8 @@ CURRENCY_COLUMNS = ["ytd_value", "ltd_value"]
 
 CANONICAL_COLUMNS = [
     "postcode", "electorate", "local_authority", 
-    "equipment_classification", "wo_type", "type", "ytd_value", 
-    "ltd_value", "billing_year", "financial_year",
+    "equipment_classification", "wo_type", "type", 
+    "ytd_value", "ltd_value", "billing_year",
 ]
 
 def fetch_year(resource_id: str) -> pd.DataFrame:
