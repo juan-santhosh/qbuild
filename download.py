@@ -27,7 +27,16 @@ for year, resource_id in resource_ids.items():
     df = pd.DataFrame(result["records"])
 
     filepath = OUTPUT_DIR + f"{year}_data.csv"
-    df.to_csv(filepath, index=False)
+
+    ytd = "Total_YTD" if "Total_YTD" in df.columns else "YTD_BILLED"
+    df[ytd] = pd.to_numeric(df[ytd].str.replace(r"[\$,]", "", regex=True))
+
+    if "Total_LTD" in df.columns: 
+        df["Total_LTD"] = pd.to_numeric(
+            df["Total_LTD"].str.replace(r"[\$,]", "", regex=True)
+        )
+
+    df.to_csv(filepath)
 
 df = pd.concat([
     pd.read_csv(OUTPUT_DIR + f"{year}_data.csv") 
