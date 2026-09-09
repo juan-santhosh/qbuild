@@ -11,13 +11,32 @@ st.set_page_config(
 st.title("QBuild Maintenance Analytics")
 
 st.caption(
-    "Analysis of Queensland Government QBuild maintenance work. " 
+    "Analysis of Queensland Government QBuild maintenance activity and expenditure. " 
     "Sourced from Queensland Government Open Data. "
     "Written by [Juan Santhosh](https://github.com/juan-santhosh)."
 )
 
+st.markdown("""
+<style>
+    section[data-testid="stSidebar"] .stRadio > div {
+        gap: 0.15rem;
+    }
+
+    section[data-testid="stSidebar"] .stRadio label {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.9rem;
+    }
+
+    div[data-testid="stCaptionContainer"] p {
+        font-size: 18px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("# Navigation")
+
 page = st.sidebar.radio(
-    "Navigation",
+    "",
     [
         "Overview",
         "Operations",
@@ -79,6 +98,7 @@ if page == "Overview":
 
     st.plotly_chart(fig, use_container_width=True)
 
+
 elif page == "Operations":
     st.subheader("Maintenance Operations")
 
@@ -97,7 +117,7 @@ elif page == "Operations":
 
     with col1:
         fig = px.bar(
-            work_types, x="wo_type", y="work_orders",
+            work_types, x="wo_type", y="work_orders", color="wo_type",
             labels={
                 "wo_type": "Work Type",
                 "work_orders": "Work Orders"
@@ -108,7 +128,7 @@ elif page == "Operations":
 
     with col2:
         fig = px.bar(
-            work_types, x="wo_type", y="expenditure",
+            work_types, x="wo_type", y="expenditure", color="wo_type",
             labels={
                 "wo_type": "Work Type",
                 "expenditure": "Expenditure ($)"
@@ -129,18 +149,49 @@ elif page == "Operations":
         ORDER BY expenditure DESC
     """)
 
-    st.subheader("Maintenance by Local Authority")
+    HEAD = 50
 
-    fig = px.bar(
-        authority.head(15), x="expenditure", y="local_authority", orientation="h",
-        labels={
-            "expenditure": "Expenditure ($)",
-            "local_authority": "Local Authority",
-        },
+    st.subheader(f"Top {HEAD} local authorities by total expenditure")
+
+    authority_top = authority.head(HEAD).copy()
+    other_expenditure = authority.iloc[HEAD:]["expenditure"].sum()
+
+    if other_expenditure > 0:
+        authority_top.loc[len(authority_top)] = {
+            "local_authority": "Other",
+            "work_orders": authority.iloc[HEAD:]["work_orders"].sum(),
+            "expenditure": other_expenditure,
+            "average_order": None,
+        }
+
+    fig = px.pie(
+        authority_top, values="expenditure",
+        names="local_authority", hole=0.4,
+    )
+
+    fig.update_traces(
+        textposition="inside", textinfo="percent",
+        hovertemplate=(
+            "<b>%{label}</b><br>"
+            "Expenditure: $%{value:,.0f}<br>"
+            "Share: %{percent}"
+            "<extra></extra>"
+        ),
     )
 
     st.plotly_chart(fig, width="stretch")
-    st.dataframe(authority, width="stretch", hide_index=True)
+
+    display_authority = authority.copy()
+
+    display_authority["expenditure"] = (
+        display_authority["expenditure"].map(lambda x: f"${x:,.0f}")
+    )
+
+    display_authority["average_order"] = (
+        display_authority["average_order"].map(lambda x: f"${x:,.0f}")
+    )
+
+    st.dataframe(display_authority, width="stretch", hide_index=True)
 
 else:
     st.subheader("Work Order Lookup")
