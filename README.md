@@ -6,7 +6,7 @@ The project takes raw government data, cleans and validates it, stores it in a S
 
 ## Demo
 
-TBA
+[qbuild_demo.webm](https://github.com/user-attachments/assets/420d4c5a-d8e5-4d97-bd41-1e1a04f8e4e3)
 
 ## Features
 
