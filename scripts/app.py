@@ -40,17 +40,52 @@ st.sidebar.markdown("# Navigation")
 page = st.sidebar.radio(
     "",
     [
-        "Overview",
-        "Operations",
         "Insights",
+        "Trends",
+        "Operations",
         "Lookup",
     ],
 )
 
 df = query("SELECT * FROM work_orders")
 
-if page == "Overview":
-    st.subheader("Overview")
+annual = query("""
+    SELECT
+        billing_year,
+        COUNT(*) AS work_orders,
+        SUM(ytd_value) AS expenditure,
+        AVG(ytd_value) AS average_order
+    FROM work_orders
+    GROUP BY billing_year
+    ORDER BY billing_year
+""")
+
+authority = query("""
+    SELECT
+        local_authority,
+        COUNT(*) AS work_orders,
+        SUM(ytd_value) AS expenditure,
+        AVG(ytd_value) AS average_order
+    FROM work_orders
+    WHERE local_authority IS NOT NULL
+    GROUP BY local_authority
+    ORDER BY expenditure DESC
+""")
+
+work_types = query("""
+    SELECT
+        wo_type,
+        COUNT(*) AS work_orders,
+        SUM(ytd_value) AS expenditure,
+        AVG(ytd_value) AS average_order
+    FROM work_orders
+    WHERE wo_type IS NOT NULL
+    GROUP BY wo_type
+    ORDER BY expenditure DESC
+""")
+
+if page == "Trends":
+    st.subheader("Maintenance Trends")
 
     total_orders = len(df)
     total_expenditure = df["ytd_value"].sum()
@@ -78,16 +113,6 @@ if page == "Overview":
         "Local Authorities",
         f"{authorities:,}"
     )
-
-    annual = query("""
-        SELECT
-            billing_year,
-            COUNT(*) AS work_orders,
-            SUM(ytd_value) AS expenditure
-        FROM work_orders
-        GROUP BY billing_year
-        ORDER BY billing_year
-    """)
 
     st.subheader("Annual Maintenance Expenditure Over Time")
     
@@ -210,17 +235,6 @@ if page == "Overview":
 elif page == "Operations":
     st.subheader("Maintenance Operations")
 
-    work_types = query("""
-        SELECT
-            wo_type,
-            COUNT(*) AS work_orders,
-            SUM(ytd_value) AS expenditure
-        FROM work_orders
-        WHERE wo_type IS NOT NULL
-        GROUP BY wo_type
-        ORDER BY expenditure DESC
-    """)
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -244,18 +258,6 @@ elif page == "Operations":
         )
 
         st.plotly_chart(fig, width="stretch")
-
-    authority = query("""
-        SELECT
-            local_authority,
-            COUNT(*) AS work_orders,
-            SUM(ytd_value) AS expenditure,
-            AVG(ytd_value) AS average_order
-        FROM work_orders
-        WHERE local_authority IS NOT NULL
-        GROUP BY local_authority
-        ORDER BY expenditure DESC
-    """)
 
     HEAD = 30
 
@@ -351,6 +353,310 @@ elif page == "Operations":
     )
 
     st.dataframe(display_authority, width="stretch", hide_index=True)
+
+elif page == "Insights":
+    st.subheader("Operational Insights")
+
+    st.caption(
+        "Summary of maintenance activity, expenditure concentration, "
+        "and unusual operational patterns."
+    )
+
+    costs = query("""
+        SELECT ytd_value
+        FROM work_orders
+        WHERE ytd_value IS NOT NULL AND ytd_value > 0
+    """)
+
+    total_expenditure = costs["ytd_value"].sum()
+
+    median_order = costs["ytd_value"].median()
+    p90_order = costs["ytd_value"].quantile(0.90)
+    p95_order = costs["ytd_value"].quantile(0.95)
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Median Work Order",
+        f"${median_order:,.0f}",
+    )
+
+    col2.metric(
+        "90th Percentile",
+        f"${p90_order:,.0f}",
+    )
+
+    col3.metric(
+        "95th Percentile",
+        f"${p95_order:,.0f}",
+    )
+
+    top_work_type = work_types.iloc[0]
+
+    col4.metric(
+        "Largest Work Type",
+        top_work_type["wo_type"],
+    )
+
+    st.subheader("Year-over-Year Change")
+
+    if len(annual) >= 2:
+        latest = annual.iloc[-1]
+        previous = annual.iloc[-2]
+
+        expenditure_change = (
+            (latest["expenditure"] - previous["expenditure"])
+            / previous["expenditure"]
+        )
+
+        orders_change = (
+            (latest["work_orders"] - previous["work_orders"])
+            / previous["work_orders"]
+        )
+
+        average_change = (
+            (latest["average_order"] - previous["average_order"])
+            / previous["average_order"]
+        )
+
+        col1, col2, col3, _ = st.columns(4)
+
+        col1.metric(
+            "Expenditure",
+            f"${latest['expenditure']:,.0f}",
+            f"{expenditure_change:+.1%}",
+        )
+
+        col2.metric(
+            "Work Orders",
+            f"{latest['work_orders']:,}",
+            f"{orders_change:+.1%}",
+        )
+
+        col3.metric(
+            "Average Order",
+            f"${latest['average_order']:,.0f}",
+            f"{average_change:+.1%}",
+        )
+
+    st.subheader("Expenditure Concentration")
+
+    work_types["share"] = (
+        work_types["expenditure"]
+        / work_types["expenditure"].sum()
+    )
+
+    work_types["cumulative_share"] = (
+        work_types["share"].cumsum()
+    )
+
+    pareto = work_types.copy()
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Bar(
+            x=pareto["wo_type"], y=pareto["expenditure"], name="Expenditure",
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Expenditure: $%{y:,.0f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=pareto["wo_type"], y=pareto["cumulative_share"] * 100,
+            name="Cumulative share", mode="lines+markers", yaxis="y2",
+            hovertemplate=(
+                "Cumulative: %{y:.1f}%"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    fig.update_layout(
+        height=550, xaxis_title="Work Type", yaxis_title="Expenditure ($)",
+        yaxis2=dict(
+            title="Cumulative Share (%)", overlaying="y",
+            side="right", range=[0, 105],
+        ),
+        margin=dict(l=20, r=20, t=40, b=20),
+    )
+
+    st.plotly_chart(fig, width="stretch")
+
+    st.subheader("Maintenance Hotspots")
+    st.caption("Top 10 authorities by maintenance expenditure.")
+
+    authority["expenditure_share"] = (
+        authority["expenditure"]
+        / authority["expenditure"].sum()
+    )
+
+    top_authorities = authority.sort_values(
+        "expenditure", ascending=False,
+    ).head(10)
+
+    st.dataframe(
+        top_authorities[[
+            "local_authority",
+            "work_orders",
+            "expenditure",
+            "average_order",
+            "expenditure_share",
+        ]].rename(
+            columns={
+                "local_authority": "Local Authority",
+                "work_orders": "Work Orders",
+                "expenditure": "Expenditure",
+                "average_order": "Average Order",
+                "expenditure_share": "Expenditure Share",
+            }
+        ).style.format({
+            "Work Orders": "{:,}",
+            "Expenditure": "${:,.0f}",
+            "Average Order": "${:,.0f}",
+            "Expenditure Share": "{:.1%}",
+        }),
+        width="stretch", hide_index=True,
+    )
+
+    st.subheader("High-Cost Authorities")
+
+    cost_threshold = authority["average_order"].quantile(0.90)
+
+    high_cost = authority[
+        authority["average_order"] >= cost_threshold
+    ].sort_values(
+        "average_order",
+        ascending=False,
+    )
+
+    st.caption(
+        f"Authorities in the top 10% by average work-order value "
+        f"(≥ ${cost_threshold:,.0f})."
+    )
+
+    st.dataframe(
+        high_cost[
+            [
+                "local_authority",
+                "work_orders",
+                "average_order",
+                "expenditure",
+            ]
+        ].rename(
+            columns={
+                "local_authority": "Local Authority",
+                "work_orders": "Work Orders",
+                "average_order": "Average Order",
+                "expenditure": "Total Expenditure",
+            }
+        ).style.format(
+            {
+                "Work Orders": "{:,}",
+                "Average Order": "${:,.0f}",
+                "Total Expenditure": "${:,.0f}",
+            }
+        ),
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.subheader("Work Order Cost Distribution")
+
+    col1, col2 = st.columns([4, 1])
+
+    with col1:
+        fig = px.histogram(
+            costs, x="ytd_value", nbins=50,
+            labels={
+                "ytd_value": "Work Order Value ($)",
+            },
+        )
+
+        fig.update_layout(
+            height=500, margin=dict(l=20, r=20, t=40, b=20),
+        )
+
+        st.plotly_chart(fig, width="stretch")
+
+    with col2:
+        st.metric(
+            "Median",
+            f"${median_order:,.0f}",
+        )
+
+        st.metric(
+            "90th Percentile",
+            f"${p90_order:,.0f}",
+        )
+
+        st.metric(
+            "95th Percentile",
+            f"${p95_order:,.0f}",
+        )
+
+        if median_order > 0:
+            skew_ratio = (
+                costs["ytd_value"].mean()
+                / median_order
+            )
+
+            st.metric(
+                "Mean / Median",
+                f"{skew_ratio:.2f}×",
+            )
+
+    st.subheader("Key Observations")
+
+    if len(annual) >= 2:
+        latest = annual.iloc[-1]
+        previous = annual.iloc[-2]
+
+        expenditure_change = (
+            latest["expenditure"] - previous["expenditure"]
+        ) / previous["expenditure"]
+
+        if expenditure_change > 0:
+            st.info(
+                "Maintenance expenditure increased by "
+                f"{expenditure_change:.1%} between "
+                f"{int(previous['billing_year'])} and "
+                f"{int(latest['billing_year'])}."
+            )
+        else:
+            st.info(
+                "Maintenance expenditure decreased by "
+                f"{abs(expenditure_change):.1%} between "
+                f"{int(previous['billing_year'])} and "
+                f"{int(latest['billing_year'])}."
+            )
+
+    st.info(
+        f"{top_work_type['wo_type']} is the largest expenditure "
+        "category, accounting for "
+        f"{top_work_type['expenditure'] / total_expenditure:.1%} "
+        "of total expenditure."
+    )
+
+    top_authority = authority.sort_values("expenditure", ascending=False).iloc[0]
+
+    st.info(
+        f"{top_authority['local_authority']} has the highest total "
+        "maintenance expenditure at "
+        f"${top_authority['expenditure']:,.0f}, across "
+        f"{top_authority['work_orders']:,} work orders."
+    )
+
+    if skew_ratio > 1.5:
+        st.info(
+            f"The average work-order value is {skew_ratio:.1f}× "
+            "the median, suggesting that expenditure is "
+            "concentrated among a smaller number of higher-cost jobs."
+        )
 
 else:
     st.subheader("Work Order Lookup")

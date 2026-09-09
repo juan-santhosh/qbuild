@@ -29,6 +29,7 @@ AUTHORITY_RENAME_MAP = {
     "Mapoon Aboriginal Sc": "Mapoon Aboriginal Council",
     "Napranum Aboriginal Sc": "Napranum Aboriginal Shire Coun",
     "North Peninsula Area Rc": "Nthn Peninsula Area Reg Council",
+    "Nthn Peninsula Area Reg Counci": "Nthn Peninsula Area Reg Council",
     "Palm Island Aboriginal Sc": "Palm Island Aboriginal Council",
     "Pormpuraaw Aboriginal Sc": "Pormpuraaw Aboriginal Shire Co",
     "Torres Strait Is Reg Council": "Torres Strait Island Reg Counc",
