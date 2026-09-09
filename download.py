@@ -35,11 +35,31 @@ COLUMN_RENAME_MAP = {
 
 CURRENCY_COLUMNS = ["ytd_value", "ltd_value"]
 
+NAME_COLUMNS = [
+    "electorate", "local_authority", 
+    "equipment_classification", "wo_type", "type"
+]
+
 CANONICAL_COLUMNS = [
     "postcode", "electorate", "local_authority", 
     "equipment_classification", "wo_type", "type", 
     "ytd_value", "ltd_value", "billing_year",
 ]
+
+def clean_currencies(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(
+        series.astype(str).str.replace(r"[\$,]", "", regex=True),
+        errors="coerce",
+    ).round(2)
+
+def clean_name(series: pd.Series) -> pd.Series:
+    return (
+        series.astype("string")
+            .str.replace("\u00A0", " ", regex=False)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+            .str.title()
+    )
 
 def fetch_year(resource_id: str) -> pd.DataFrame:
     records = []
@@ -56,10 +76,11 @@ def fetch_year(resource_id: str) -> pd.DataFrame:
 
     for col in CURRENCY_COLUMNS:
         if col in df.columns:
-            df[col] = pd.to_numeric(
-                df[col].astype(str).str.replace(r"[\$,]", "", regex=True),
-                errors="coerce",
-            )
+            df[col] = clean_currencies(df[col])
+
+    for col in NAME_COLUMNS:
+        if col in df.columns:
+            df[col] = clean_name(df[col])
 
     for col in CANONICAL_COLUMNS:
         if col not in df.columns:

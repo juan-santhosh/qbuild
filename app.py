@@ -1,20 +1,23 @@
-from pathlib import Path
-
-import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-FILEPATH = Path("data/combined_data.csv")
+from load import query
 
-st.set_page_config(page_title="QBuild Maintenance")
+st.set_page_config(
+    page_title="QBuild Maintenance Analytics",
+    layout="wide",
+)
 
 st.title("QBuild Maintenance Analytics")
+st.caption("Sourced from Queensland Government Open Data. Written by [Juan Santhosh](https://juansanthosh.com).")
 
-if not FILEPATH.exists():
-    st.error(f"'{FILEPATH}' not found. Run `uv run download.py` first.")
-    st.stop()
-
-df = pd.read_csv(FILEPATH)
+summary = query("""
+SELECT
+    COUNT(*) AS work_orders,
+    SUM(ytd_value) AS expenditure,
+    AVG(ytd_value) AS average_order
+FROM work_orders
+""")
 
 col1, col2 = st.columns(2)
 
