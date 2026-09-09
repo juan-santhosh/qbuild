@@ -1,4 +1,6 @@
+import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from query import query
@@ -40,7 +42,8 @@ page = st.sidebar.radio(
     [
         "Overview",
         "Operations",
-        "Work Orders",
+        "Insights",
+        "Lookup",
     ],
 )
 
@@ -86,18 +89,123 @@ if page == "Overview":
         ORDER BY billing_year
     """)
 
-    st.subheader("Annual Maintenance Expenditure")
+    st.subheader("Annual Maintenance Expenditure Over Time")
+    
+    latest_year = annual["billing_year"].max()
+    previous_year = latest_year - 1
 
-    fig = px.line(
-        annual, x="billing_year", y="expenditure", markers=True,
-        labels={
-            "billing_year": "Billing Year",
-            "expenditure": "Expenditure ($)"
-        }
+    latest = annual[
+        annual["billing_year"] == latest_year
+    ]["expenditure"].iloc[0]
+
+    previous = annual[
+        annual["billing_year"] == previous_year
+    ]["expenditure"].iloc[0]
+
+    yoy_change = (latest - previous) / previous
+
+    if len(annual) >= 2:
+        x = annual["billing_year"].to_numpy(dtype=float)
+        y = annual["expenditure"].to_numpy(dtype=float)
+
+        slope, intercept = np.polyfit(x, y, 1)
+
+        annual["trend"] = slope * x + intercept
+
+        next_year = int(x.max() + 1)
+        forecast = slope * next_year + intercept
+
+        forecast_x = np.array([x.max(), next_year])
+
+        forecast_y = np.array([
+            slope * x.max() + intercept, forecast
+        ])
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=annual["billing_year"], y=annual["expenditure"],
+                mode="lines+markers", name="Actual",
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    "Expenditure: $%{y:,.0f}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=annual["billing_year"], y=annual["trend"],
+                mode="lines", name="Linear trend",
+                line=dict(dash="dot"),
+                hovertemplate=(
+                    "Trend: $%{y:,.0f}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=forecast_x, y=forecast_y,
+                mode="lines+markers", name="Forecast",
+                line=dict(dash="dash"),
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    "Forecast: $%{y:,.0f}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        fig.update_layout(
+            height=550,
+            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis_title="Billing Year",
+            yaxis_title="Expenditure ($)",
+            legend_title="",
+        )
+
+        st.info(
+            f"Maintenance expenditure changed by "
+            f"{yoy_change:+.1%} from {previous_year} to {latest_year} "
+            f"with a forecasted expenditure of ${forecast:,.0f} for {next_year}."
+        )
+
+        st.plotly_chart(fig, width="stretch")
+
+    annual_type = query("""
+        SELECT
+            billing_year,
+            wo_type,
+            SUM(ytd_value) AS expenditure
+        FROM work_orders
+        WHERE wo_type IS NOT NULL
+        AND ytd_value IS NOT NULL
+        GROUP BY billing_year, wo_type
+        ORDER BY billing_year
+    """)
+
+    st.subheader("Annual Maintenance Expenditure by Work Type")
+
+    st.info(
+        "All work types have increased in expenditure over time except for "
+        "Facilities Management which is largely consistent."
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    fig = px.area(
+        annual_type, x="billing_year", y="expenditure", color="wo_type",
+        labels={
+            "billing_year": "Billing Year",
+            "expenditure": "Expenditure ($)",
+            "wo_type": "Work Type",
+        },
+    )
 
+    fig.update_layout(height=500)
+    st.plotly_chart(fig, width="stretch")
 
 elif page == "Operations":
     st.subheader("Maintenance Operations")
@@ -183,6 +291,52 @@ elif page == "Operations":
             "<extra></extra>"
         ),
     )
+
+    st.plotly_chart(fig, width="stretch")
+
+    st.subheader("Log Scale Scatter Plot of Local Authorities by Work Orders and Average Order Value")
+
+    median_orders = authority["work_orders"].median()
+    median_cost = authority["average_order"].median()
+
+    authority["category"] = "Low Volume / Low Cost"
+
+    authority.loc[
+        (authority["work_orders"] >= median_orders)
+        & (authority["average_order"] >= median_cost),
+        "category"
+    ] = "High Volume / High Cost"
+
+    authority.loc[
+        (authority["work_orders"] >= median_orders)
+        & (authority["average_order"] < median_cost),
+        "category"
+    ] = "High Volume / Low Cost"
+
+    authority.loc[
+        (authority["work_orders"] < median_orders)
+        & (authority["average_order"] >= median_cost),
+        "category"
+    ] = "Low Volume / High Cost"
+
+    fig = px.scatter(
+        authority, x="work_orders", y="average_order",
+        size="expenditure", color="category", hover_name="local_authority",
+        hover_data={
+            "work_orders": ":,",
+            "average_order": ":$.0f",
+            "expenditure": ":$.0f",
+        },
+        labels={
+            "work_orders": "Log Number of Work Orders",
+            "average_order": "Log Average Work Order Value",
+            "expenditure": "Total Expenditure ($)",
+            "category": "Category",
+        },
+    )
+
+    fig.update_xaxes(type="log")
+    fig.update_yaxes(type="log")
 
     st.plotly_chart(fig, width="stretch")
 
