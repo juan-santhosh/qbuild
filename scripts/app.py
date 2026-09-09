@@ -149,7 +149,7 @@ elif page == "Operations":
         ORDER BY expenditure DESC
     """)
 
-    HEAD = 50
+    HEAD = 30
 
     st.subheader(f"Top {HEAD} local authorities by total expenditure")
 
@@ -167,6 +167,11 @@ elif page == "Operations":
     fig = px.pie(
         authority_top, values="expenditure",
         names="local_authority", hole=0.4,
+    )
+
+    fig.update_layout(
+        height=700, margin=dict(l=20, r=20, t=40, b=20),
+        legend=dict(font=dict(size=13)),
     )
 
     fig.update_traces(
