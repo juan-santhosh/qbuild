@@ -4,47 +4,17 @@ import pandas as pd
 from ckanapi import RemoteCKAN
 from dotenv import load_dotenv
 
+from config import (
+    AUTHORITY_RENAME_MAP, CANONICAL_COLUMNS, COLUMN_RENAME_MAP, 
+    CURRENCY_COLUMNS, NAME_COLUMNS, RESOURCE_IDS
+)
+
 load_dotenv()
 
 API_KEY = os.getenv("API_TOKEN")
 remote = RemoteCKAN("https://www.data.qld.gov.au/", apikey=API_KEY)
 
 OUTPUT_DIR = "data/"
-
-RESOURCE_IDS = {
-    2026: "126ed6f0-c3e1-4c97-b8a2-6be14032033d",
-    2025: "c0857064-43f0-43db-940e-bd951ce2c3e2",
-    2024: "b98f87db-b65b-4769-a557-96a8c4a624ba",
-    2023: "1243c65b-6e0a-46d0-a834-5c39193c5c75",
-    2022: "67def1a7-434e-41d1-b213-349bf8c49cf5"
-}
-
-COLUMN_RENAME_MAP = {
-    "Postcode": "postcode",
-    "POST_CODE": "postcode",
-    "ELECTORATE": "electorate",
-    "LOCAL_AUTHORITY": "local_authority",
-    "EQUIPMENT_CLASSIFCATION": "equipment_classification", # source typo
-    "WO_TYPE": "wo_type",
-    "Total_YTD": "ytd_value",
-    "YTD_BILLED": "ytd_value",
-    "Total_LTD": "ltd_value",
-    "BILLING_YEAR": "billing_year",
-    "TYPE": "type",
-}
-
-CURRENCY_COLUMNS = ["ytd_value", "ltd_value"]
-
-NAME_COLUMNS = [
-    "electorate", "local_authority", 
-    "equipment_classification", "wo_type", "type"
-]
-
-CANONICAL_COLUMNS = [
-    "postcode", "electorate", "local_authority", 
-    "equipment_classification", "wo_type", "type", 
-    "ytd_value", "ltd_value", "billing_year",
-]
 
 def clean_currencies(series: pd.Series) -> pd.Series:
     return pd.to_numeric(
@@ -60,6 +30,14 @@ def clean_name(series: pd.Series) -> pd.Series:
             .str.strip()
             .str.title()
     )
+
+def apply_authority_mapping(df: pd.DataFrame) -> pd.Series:
+    df = df.copy()
+
+    for old, new in AUTHORITY_RENAME_MAP.items():
+        df["local_authority"] = df["local_authority"].replace(old, new)
+
+    return df["local_authority"]
 
 def fetch_year(resource_id: str) -> pd.DataFrame:
     records = []
@@ -85,6 +63,8 @@ def fetch_year(resource_id: str) -> pd.DataFrame:
     for col in CANONICAL_COLUMNS:
         if col not in df.columns:
             df[col] = pd.NA
+
+    df["local_authority"] = apply_authority_mapping(df)
 
     return df[CANONICAL_COLUMNS]
 
